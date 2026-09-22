@@ -1,0 +1,6 @@
+{
+  "name": "China Factory RFQ & Excel Sheet Generator",
+  "description": "Create customized sourcing inquiry Excel sheets for China suppliers with embedded product images, configurable quotation fields (FOB, EXW, carton specs, lead time), and bilingual Chinese/English support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
