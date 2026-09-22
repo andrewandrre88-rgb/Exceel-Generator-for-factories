@@ -20,9 +20,91 @@ export async function exportToChinaSupplierExcel(
   });
 
   // Enabled columns sorted by order
-  const activeCols = columns
+  let activeCols = columns
     .filter((c) => c.enabled)
     .sort((a, b) => a.order - b.order);
+
+  // If currency exchange rate is enabled and user requested converted columns
+  const isExchangeRateActive = metadata.enableExchangeRate ?? true;
+  const rateUsdToCny = metadata.exchangeRateUsdToCny || 7.25;
+  const shouldAddConvertedCols = isExchangeRateActive && (metadata.addConvertedCurrencyColumns ?? true);
+
+  if (shouldAddConvertedCols) {
+    // Add virtual auto-calculated currency conversion columns
+    // If pricing columns are in RMB (¥), convert to USD ($ / rate)
+    // If pricing columns are in USD ($), convert to RMB (¥ * rate)
+    const newCols: ColumnDefinition[] = [];
+    activeCols.forEach(col => {
+      newCols.push(col);
+      if (col.id === 'fobPrice') {
+        if (col.type === 'currency_cny' || col.unit === 'RMB') {
+          newCols.push({
+            id: 'fobPrice_usd',
+            labelEn: `FOB Price ($ USD @${rateUsdToCny})`,
+            labelZh: `FOB 离岸折合美元 (汇率 ${rateUsdToCny})`,
+            category: 'pricing',
+            type: 'currency_usd',
+            requiredBySupplier: false,
+            filledBy: 'buyer',
+            enabled: true,
+            order: col.order + 0.1,
+            width: 155,
+            unit: 'USD',
+            description: `Auto-converted to USD at exchange rate 1 USD = ${rateUsdToCny} CNY`,
+          });
+        } else {
+          newCols.push({
+            id: 'fobPrice_cny',
+            labelEn: `FOB Price (¥ RMB @${rateUsdToCny})`,
+            labelZh: `FOB 离岸折合人民币 (汇率 ${rateUsdToCny})`,
+            category: 'pricing',
+            type: 'currency_cny',
+            requiredBySupplier: false,
+            filledBy: 'buyer',
+            enabled: true,
+            order: col.order + 0.1,
+            width: 155,
+            unit: 'RMB',
+            description: `Auto-converted from USD at exchange rate 1 USD = ${rateUsdToCny} CNY`,
+          });
+        }
+      }
+      if (col.id === 'exwPrice') {
+        if (col.type === 'currency_cny' || col.unit === 'RMB') {
+          newCols.push({
+            id: 'exwPrice_usd',
+            labelEn: `EXW Price ($ USD @${rateUsdToCny})`,
+            labelZh: `EXW 出厂折合美元 (汇率 ${rateUsdToCny})`,
+            category: 'pricing',
+            type: 'currency_usd',
+            requiredBySupplier: false,
+            filledBy: 'buyer',
+            enabled: true,
+            order: col.order + 0.1,
+            width: 155,
+            unit: 'USD',
+            description: `Auto-converted to USD at exchange rate 1 USD = ${rateUsdToCny} CNY`,
+          });
+        } else {
+          newCols.push({
+            id: 'exwPrice_cny',
+            labelEn: `EXW Price (¥ RMB @${rateUsdToCny})`,
+            labelZh: `EXW 出厂折合人民币 (汇率 ${rateUsdToCny})`,
+            category: 'pricing',
+            type: 'currency_cny',
+            requiredBySupplier: false,
+            filledBy: 'buyer',
+            enabled: true,
+            order: col.order + 0.1,
+            width: 155,
+            unit: 'RMB',
+            description: `Auto-converted from USD at exchange rate 1 USD = ${rateUsdToCny} CNY`,
+          });
+        }
+      }
+    });
+    activeCols = newCols;
+  }
 
   // Palette constants
   const NAVY = '1E3A8A';
@@ -60,6 +142,14 @@ export async function exportToChinaSupplierExcel(
   worksheet.getCell('D3').value = metadata.buyerEmail || '';
   worksheet.getCell('E3').value = 'Currency / 结算币种:';
   worksheet.getCell('F3').value = metadata.targetCurrency || 'USD';
+
+  // Currency Exchange info in header
+  if (isExchangeRateActive) {
+    worksheet.getCell('G2').value = 'FX Rate / 参考汇率:';
+    worksheet.getCell('H2').value = `1 USD = ¥${rateUsdToCny} CNY`;
+    worksheet.getCell('G3').value = 'EUR FX / 欧元汇率:';
+    worksheet.getCell('H3').value = `1 USD = €${metadata.exchangeRateUsdToEur || 0.92} EUR`;
+  }
 
   worksheet.getCell('A4').value = 'Target Supplier / 工厂:';
   worksheet.getCell('B4').value = metadata.supplierName || 'Factory Representative / 供应商销售经理';
@@ -269,6 +359,54 @@ export async function exportToChinaSupplierExcel(
             product.values.boxHeight
           );
           cellValue = autoCbm > 0 ? autoCbm : '';
+        }
+      } else if (col.id === 'fobPrice_cny') {
+        // Find column letter of fobPrice in this row
+        const fobColIdx = activeCols.findIndex(c => c.id === 'fobPrice');
+        if (fobColIdx !== -1) {
+          const fobLetter = getColLetter(fobColIdx + 3);
+          // Set Excel formula: =FOB_CELL * rate
+          cell.value = {
+            formula: `IF(${fobLetter}${currentRow}>0, ${fobLetter}${currentRow}*${rateUsdToCny}, "")`,
+            result: product.values.fobPrice ? Number(product.values.fobPrice) * rateUsdToCny : undefined,
+          };
+        } else if (product.values.fobPrice) {
+          cell.value = Number(product.values.fobPrice) * rateUsdToCny;
+        }
+      } else if (col.id === 'fobPrice_usd') {
+        // Find column letter of fobPrice (which is in RMB) in this row
+        const fobColIdx = activeCols.findIndex(c => c.id === 'fobPrice');
+        if (fobColIdx !== -1) {
+          const fobLetter = getColLetter(fobColIdx + 3);
+          // Set Excel formula: =FOB_RMB_CELL / rate
+          cell.value = {
+            formula: `IF(${fobLetter}${currentRow}>0, ROUND(${fobLetter}${currentRow}/${rateUsdToCny}, 2), "")`,
+            result: product.values.fobPrice ? parseFloat((Number(product.values.fobPrice) / rateUsdToCny).toFixed(2)) : undefined,
+          };
+        } else if (product.values.fobPrice) {
+          cell.value = parseFloat((Number(product.values.fobPrice) / rateUsdToCny).toFixed(2));
+        }
+      } else if (col.id === 'exwPrice_cny') {
+        const exwColIdx = activeCols.findIndex(c => c.id === 'exwPrice');
+        if (exwColIdx !== -1) {
+          const exwLetter = getColLetter(exwColIdx + 3);
+          cell.value = {
+            formula: `IF(${exwLetter}${currentRow}>0, ${exwLetter}${currentRow}*${rateUsdToCny}, "")`,
+            result: product.values.exwPrice ? Number(product.values.exwPrice) * rateUsdToCny : undefined,
+          };
+        } else if (product.values.exwPrice) {
+          cell.value = Number(product.values.exwPrice) * rateUsdToCny;
+        }
+      } else if (col.id === 'exwPrice_usd') {
+        const exwColIdx = activeCols.findIndex(c => c.id === 'exwPrice');
+        if (exwColIdx !== -1) {
+          const exwLetter = getColLetter(exwColIdx + 3);
+          cell.value = {
+            formula: `IF(${exwLetter}${currentRow}>0, ROUND(${exwLetter}${currentRow}/${rateUsdToCny}, 2), "")`,
+            result: product.values.exwPrice ? parseFloat((Number(product.values.exwPrice) / rateUsdToCny).toFixed(2)) : undefined,
+          };
+        } else if (product.values.exwPrice) {
+          cell.value = parseFloat((Number(product.values.exwPrice) / rateUsdToCny).toFixed(2));
         }
       } else {
         const raw = product.values[col.id];

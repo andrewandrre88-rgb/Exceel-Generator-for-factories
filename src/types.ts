@@ -52,4 +52,9 @@ export interface RFQMetadata {
   deadlineDate: string;
   instructionsEn: string;
   instructionsZh: string;
+  // Currency Exchange settings for Excel Sheet and Quotation
+  enableExchangeRate?: boolean;
+  exchangeRateUsdToCny?: number; // e.g. 7.20 (1 USD = 7.20 RMB)
+  exchangeRateUsdToEur?: number; // e.g. 0.92 (1 USD = 0.92 EUR)
+  addConvertedCurrencyColumns?: boolean; // Whether to add auto-converted price columns in Excel sheet
 }

@@ -2,21 +2,26 @@ import React, { useState } from 'react';
 import { ColumnDefinition, ProductItem } from '../types';
 import { calculateCartons, calculateTotalCbm } from '../utils/calculations';
 import { fileToBase64 } from '../utils/imageUtils';
+import { ProductCardMobile } from './ProductCardMobile';
 import { 
   Plus, 
   Trash2, 
   Copy, 
   Camera, 
   Maximize2, 
-  HelpCircle,
+  HelpCircle, 
   AlertCircle,
   Search,
-  ArrowUpDown
+  ArrowUpDown,
+  LayoutGrid,
+  Table as TableIcon
 } from 'lucide-react';
 
 interface ProductTableProps {
   products: ProductItem[];
   columns: ColumnDefinition[];
+  exchangeRateUsdToCny?: number;
+  enableExchangeRate?: boolean;
   onUpdateProduct: (id: string, updates: Partial<ProductItem>) => void;
   onUpdateProductValue: (id: string, columnId: string, value: any) => void;
   onDeleteProduct: (id: string) => void;
@@ -28,6 +33,8 @@ interface ProductTableProps {
 export const ProductTable: React.FC<ProductTableProps> = ({
   products,
   columns,
+  exchangeRateUsdToCny = 7.25,
+  enableExchangeRate = true,
   onUpdateProduct,
   onUpdateProductValue,
   onDeleteProduct,
@@ -37,6 +44,8 @@ export const ProductTable: React.FC<ProductTableProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'unquoted'>('all');
+  // Auto-detect or let user toggle Card view vs Table view (defaults to cards on small screens, table on lg)
+  const [viewLayout, setViewLayout] = useState<'auto' | 'table' | 'cards'>('auto');
 
   const activeColumns = columns
     .filter(c => c.enabled)
@@ -86,7 +95,47 @@ export const ProductTable: React.FC<ProductTableProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* View toggle (Grid / Table) */}
+          <div className="flex bg-slate-200/70 p-0.5 rounded-lg text-xs">
+            <button
+              type="button"
+              onClick={() => setViewLayout('auto')}
+              className={`px-2 py-1 rounded-md font-medium transition-colors ${
+                viewLayout === 'auto'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Responsive: Cards on Mobile/iPad, Table on Desktop"
+            >
+              Auto
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewLayout('cards')}
+              className={`p-1 px-1.5 rounded-md font-medium transition-colors ${
+                viewLayout === 'cards'
+                  ? 'bg-white text-blue-600 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Mobile Card Layout"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewLayout('table')}
+              className={`p-1 px-1.5 rounded-md font-medium transition-colors ${
+                viewLayout === 'table'
+                  ? 'bg-white text-blue-600 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Full Spreadsheet Table"
+            >
+              <TableIcon className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           {/* Quick filter */}
           <div className="flex bg-slate-200/70 p-0.5 rounded-lg text-xs">
             <button
@@ -97,7 +146,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              All Items ({products.length})
+              All ({products.length})
             </button>
             <button
               onClick={() => setFilterMode('unquoted')}
@@ -107,13 +156,13 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Missing Quotation
+              Missing Quote
             </button>
           </div>
 
           <button
             onClick={onAddProduct}
-            className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors"
+            className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors shrink-0"
           >
             <Plus className="w-3.5 h-3.5" />
             Add Row
@@ -121,8 +170,34 @@ export const ProductTable: React.FC<ProductTableProps> = ({
         </div>
       </div>
 
-      {/* Spreadsheet grid */}
-      <div className="overflow-x-auto min-h-[380px] max-h-[65vh]">
+      {/* Mobile Card Layout (Shown on small screens / tablets or if cards layout selected) */}
+      <div className={`${viewLayout === 'cards' ? 'block' : viewLayout === 'table' ? 'hidden' : 'block lg:hidden'} p-3 space-y-3 bg-slate-100/50`}>
+        {filteredProducts.length === 0 ? (
+          <div className="py-12 text-center text-slate-400 bg-white rounded-xl border border-slate-200 p-6">
+            <p className="font-semibold text-slate-600 text-sm">No products found</p>
+            <p className="text-xs text-slate-400 mt-1">Click "Add Row" to create products for this inquiry.</p>
+          </div>
+        ) : (
+          filteredProducts.map((prod, idx) => (
+            <ProductCardMobile
+              key={prod.id}
+              product={prod}
+              index={idx}
+              columns={columns}
+              exchangeRateUsdToCny={exchangeRateUsdToCny}
+              enableExchangeRate={enableExchangeRate}
+              onUpdateProduct={onUpdateProduct}
+              onUpdateProductValue={onUpdateProductValue}
+              onDeleteProduct={onDeleteProduct}
+              onDuplicateProduct={onDuplicateProduct}
+              onViewImage={onViewImage}
+            />
+          ))
+        )}
+      </div>
+
+      {/* Spreadsheet grid (Shown on desktop or if user forces table view) */}
+      <div className={`${viewLayout === 'table' ? 'block' : viewLayout === 'cards' ? 'hidden' : 'hidden lg:block'} overflow-x-auto min-h-[380px] max-h-[65vh]`}>
         <table className="w-full text-left border-collapse border-spacing-0">
           <thead>
             {/* Top group row: Buyer columns vs Factory fillable */}
@@ -445,33 +520,51 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                         col.type === 'currency_usd' ||
                         col.type === 'currency_cny';
 
+                      // Converted value preview
+                      let convertedPreview: string | null = null;
+                      if (enableExchangeRate && rawValue && !isNaN(Number(rawValue)) && Number(rawValue) > 0) {
+                        const numVal = Number(rawValue);
+                        if (col.type === 'currency_cny' && exchangeRateUsdToCny > 0) {
+                          convertedPreview = `≈ $${(numVal / exchangeRateUsdToCny).toFixed(2)} USD`;
+                        } else if (col.type === 'currency_usd' && exchangeRateUsdToCny > 0) {
+                          convertedPreview = `≈ ¥${(numVal * exchangeRateUsdToCny).toFixed(2)} RMB`;
+                        }
+                      }
+
                       return (
                         <td key={col.id} className={`p-1.5 border-r border-slate-200 ${cellBg}`}>
-                          <div className="relative flex items-center">
-                            {col.type === 'currency_usd' && (
-                              <span className="absolute left-2 text-slate-400 text-xs pointer-events-none">
-                                $
-                              </span>
+                          <div className="relative flex flex-col justify-center">
+                            <div className="relative flex items-center">
+                              {col.type === 'currency_usd' && (
+                                <span className="absolute left-2 text-slate-400 text-xs pointer-events-none">
+                                  $
+                                </span>
+                              )}
+                              {col.type === 'currency_cny' && (
+                                <span className="absolute left-2 text-slate-400 text-xs pointer-events-none">
+                                  ¥
+                                </span>
+                              )}
+                              <input
+                                type={isNumber ? 'number' : 'text'}
+                                step={col.type.startsWith('currency') ? '0.01' : 'any'}
+                                value={rawValue}
+                                placeholder={col.placeholder || ''}
+                                onChange={e =>
+                                  onUpdateProductValue(product.id, col.id, e.target.value)
+                                }
+                                className={`w-full py-1 text-xs border border-transparent hover:border-slate-300 focus:border-blue-500 rounded focus:bg-white focus:outline-hidden ${
+                                  isNumber ? 'text-right pr-2' : 'px-2'
+                                } ${
+                                  col.type.startsWith('currency') ? 'pl-5 font-semibold text-slate-900' : ''
+                                }`}
+                              />
+                            </div>
+                            {convertedPreview && (
+                              <div className="text-[10px] text-right text-emerald-600 font-mono pr-2 -mt-0.5 leading-none">
+                                {convertedPreview}
+                              </div>
                             )}
-                            {col.type === 'currency_cny' && (
-                              <span className="absolute left-2 text-slate-400 text-xs pointer-events-none">
-                                ¥
-                              </span>
-                            )}
-                            <input
-                              type={isNumber ? 'number' : 'text'}
-                              step={col.type.startsWith('currency') ? '0.01' : 'any'}
-                              value={rawValue}
-                              placeholder={col.placeholder || ''}
-                              onChange={e =>
-                                onUpdateProductValue(product.id, col.id, e.target.value)
-                              }
-                              className={`w-full py-1 text-xs border border-transparent hover:border-slate-300 focus:border-blue-500 rounded focus:bg-white focus:outline-hidden ${
-                                isNumber ? 'text-right pr-2' : 'px-2'
-                              } ${
-                                col.type.startsWith('currency') ? 'pl-5 font-semibold text-slate-900' : ''
-                              }`}
-                            />
                           </div>
                         </td>
                       );

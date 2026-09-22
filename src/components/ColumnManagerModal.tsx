@@ -127,17 +127,17 @@ export const ColumnManagerModal: React.FC<ColumnManagerModalProps> = ({
   };
 
   return (
-    <div id="column-manager-backdrop" className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div id="column-manager-modal" className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col border border-slate-200 overflow-hidden">
+    <div id="column-manager-backdrop" className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4">
+      <div id="column-manager-modal" className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col border border-slate-200 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 bg-slate-50">
           <div>
             <div className="flex items-center gap-2">
-              <Sliders className="w-5 h-5 text-blue-600" />
-              <h2 className="text-lg font-bold text-slate-900">Customize Excel Quotation Columns</h2>
+              <Sliders className="w-5 h-5 text-blue-600 shrink-0" />
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">Customize Excel Quotation Columns</h2>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Select, reorder, and configure the inputs the Chinese factory needs to fill (with English & Chinese bilingual headers)
+            <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
+              Select, reorder, and configure the inputs the Chinese factory needs to fill (with English &amp; Chinese bilingual headers)
             </p>
           </div>
           <button

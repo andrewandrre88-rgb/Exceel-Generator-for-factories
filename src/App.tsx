@@ -3,6 +3,10 @@ import { ColumnDefinition, ProductItem, RFQMetadata } from './types';
 import { DEFAULT_COLUMNS } from './data/defaultColumns';
 import { SAMPLE_PRODUCTS, INITIAL_METADATA } from './data/sampleProducts';
 import { exportToChinaSupplierExcel } from './utils/excelExport';
+import { useAuth } from './context/AuthContext';
+import { LoginPage } from './components/LoginPage';
+import { ProjectManagerModal } from './components/ProjectManagerModal';
+import { saveProjectToFirestore, SavedProject } from './lib/firestoreProjects';
 
 import { Header } from './components/Header';
 import { SummaryStats } from './components/SummaryStats';
@@ -23,11 +27,18 @@ import {
   Plus
 } from 'lucide-react';
 
-const STORAGE_KEY_PRODUCTS = 'china_rfq_products_v1';
-const STORAGE_KEY_COLUMNS = 'china_rfq_columns_v1';
-const STORAGE_KEY_METADATA = 'china_rfq_metadata_v1';
+const STORAGE_KEY_PRODUCTS = 'china_rfq_products_v2';
+const STORAGE_KEY_COLUMNS = 'china_rfq_columns_v2';
+const STORAGE_KEY_METADATA = 'china_rfq_metadata_v2';
+const STORAGE_KEY_PROJECT_ID = 'china_rfq_project_id_v2';
 
 export default function App() {
+  const { user, loading: authLoading, signOut } = useAuth();
+  const [isGuestMode, setIsGuestMode] = useState(false);
+  const [projectId, setProjectId] = useState<string>(() => {
+    return localStorage.getItem(STORAGE_KEY_PROJECT_ID) || `rfq-${Date.now()}`;
+  });
+
   // Load initial state with localStorage fallbacks
   const [products, setProducts] = useState<ProductItem[]>(() => {
     try {
@@ -64,6 +75,8 @@ export default function App() {
   const [isBatchUploadOpen, setIsBatchUploadOpen] = useState(false);
   const [isMetadataOpen, setIsMetadataOpen] = useState(false);
   const [isSupplierView, setIsSupplierView] = useState(false);
+  const [isProjectManagerOpen, setIsProjectManagerOpen] = useState(false);
+  const [isSavingToCloud, setIsSavingToCloud] = useState(false);
 
   // Lightbox Image View state
   const [activeImageModal, setActiveImageModal] = useState<{
@@ -84,6 +97,11 @@ export default function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Sync project ID
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_PROJECT_ID, projectId);
+  }, [projectId]);
 
   // Sync to local storage
   useEffect(() => {
@@ -114,78 +132,121 @@ export default function App() {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage(null);
-    }, 3500);
+    }, 3200);
   };
 
-  // Product mutation handlers
+  const handleSaveToCloud = async () => {
+    if (!user) {
+      showToast('Please sign in to save projects to Google Firebase');
+      return;
+    }
+    setIsSavingToCloud(true);
+    try {
+      await saveProjectToFirestore(user.uid, user.email || '', {
+        id: projectId,
+        projectName: metadata.projectName || 'China Factory RFQ',
+        rfqNumber: metadata.rfqNumber || 'RFQ-001',
+        metadata,
+        columns,
+        products,
+      });
+      showToast('Saved inquiry project to Google Firestore!');
+    } catch (err) {
+      console.error('Failed to save to cloud:', err);
+      showToast('Error saving project to cloud');
+    } finally {
+      setIsSavingToCloud(false);
+    }
+  };
+
+  const handleLoadCloudProject = (proj: SavedProject) => {
+    setProjectId(proj.id);
+    setMetadata(proj.metadata);
+    setColumns(proj.columns || DEFAULT_COLUMNS);
+    setProducts(proj.products || []);
+    showToast(`Switched to: ${proj.projectName}`);
+  };
+
+  // Product mutations
   const handleUpdateProduct = (id: string, updates: Partial<ProductItem>) => {
     setProducts(prev =>
       prev.map(p => (p.id === id ? { ...p, ...updates } : p))
     );
   };
 
-  const handleUpdateProductValue = (id: string, columnId: string, value: any) => {
+  const handleUpdateProductValue = (
+    productId: string,
+    fieldId: string,
+    value: any
+  ) => {
     setProducts(prev =>
       prev.map(p => {
-        if (p.id !== id) return p;
+        if (p.id !== productId) return p;
         return {
           ...p,
           values: {
             ...p.values,
-            [columnId]: value,
+            [fieldId]: value,
           },
         };
       })
     );
   };
 
-  const handleDeleteProduct = (id: string) => {
-    setProducts(prev => prev.filter(p => p.id !== id));
-    showToast('Product row removed');
+  const handleDeleteProduct = (productId: string) => {
+    setProducts(prev => prev.filter(p => p.id !== productId));
+    showToast('Product removed');
   };
 
-  const handleDuplicateProduct = (id: string) => {
-    const item = products.find(p => p.id === id);
-    if (!item) return;
-
+  const handleDuplicateProduct = (productId: string) => {
+    const target = products.find(p => p.id === productId);
+    if (!target) return;
     const duplicated: ProductItem = {
-      ...item,
-      id: `prod-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      sku: `${item.sku}-COPY`,
+      ...target,
+      id: 'prod-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      name: `${target.name} (Copy)`,
+      sku: target.sku ? `${target.sku}-COPY` : '',
       createdAt: Date.now(),
     };
-
     setProducts(prev => [...prev, duplicated]);
-    showToast(`Duplicated ${item.sku}`);
+    showToast('Product duplicated');
   };
 
   const handleAddProduct = () => {
-    const newItem: ProductItem = {
-      id: `prod-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      sku: `SKU-${products.length + 1}`,
-      name: 'New Sourcing Item',
-      image: '',
+    const newProd: ProductItem = {
+      id: 'prod-' + Date.now(),
+      name: `New Item ${products.length + 1}`,
+      sku: `SKU-${1000 + products.length + 1}`,
       targetQty: 1000,
+      image: '',
       buyerSpecs: '',
       values: {
-        portOfLoading: metadata.departurePortPreference?.split('/')[0]?.trim() || 'Ningbo',
+        fobPrice: '',
+        exwPrice: '',
+        cartons: '',
+        unitsPerCarton: '',
+        boxLength: '',
+        boxWidth: '',
+        boxHeight: '',
+        boxWeight: '',
+        leadTime: '',
       },
       createdAt: Date.now(),
     };
-
-    setProducts(prev => [...prev, newItem]);
-    showToast('New product row added');
+    setProducts(prev => [...prev, newProd]);
+    showToast('Added new product row');
   };
 
-  const handleBatchAddProducts = (newItems: ProductItem[]) => {
-    setProducts(prev => [...prev, ...newItems]);
-    showToast(`Added ${newItems.length} products to Excel sheet`);
+  const handleBatchAddProducts = (newProducts: ProductItem[]) => {
+    setProducts(prev => [...prev, ...newProducts]);
+    showToast(`Added ${newProducts.length} items from image batch`);
   };
 
   const handleReplaceImage = (productId: string, newBase64: string) => {
-    handleUpdateProduct(productId, { image: newBase64 });
-    setActiveImageModal(prev => ({ ...prev, image: newBase64 }));
-    showToast('Product photo updated');
+    setProducts(prev =>
+      prev.map(p => (p.id === productId ? { ...p, image: newBase64 } : p))
+    );
+    showToast('Updated product photo');
   };
 
   const handleExportExcel = async () => {
@@ -226,6 +287,21 @@ export default function App() {
     }
   };
 
+  // Auth Loading state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white">
+        <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="text-xs text-slate-400">Loading Google Firebase Authentication...</p>
+      </div>
+    );
+  }
+
+  // Not logged in and not guest mode: Show modern Login Page
+  if (!user && !isGuestMode) {
+    return <LoginPage onContinueAsGuest={() => setIsGuestMode(true)} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-100/70 text-slate-900 flex flex-col font-sans selection:bg-blue-500 selection:text-white">
       {/* Header Bar */}
@@ -241,6 +317,12 @@ export default function App() {
         isSupplierView={isSupplierView}
         onLoadSampleData={handleLoadSampleData}
         onClearAll={handleClearAll}
+        user={user}
+        onSignOut={() => {
+          signOut();
+          setIsGuestMode(false);
+        }}
+        onOpenProjectManager={() => setIsProjectManagerOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -250,14 +332,14 @@ export default function App() {
           columns={columns}
           metadata={metadata}
           onUpdateProductValue={handleUpdateProductValue}
-          onExportExcel={handleExportExcel}
           onClose={() => setIsSupplierView(false)}
+          onExportExcel={handleExportExcel}
           isExporting={isExporting}
         />
       ) : (
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-5 space-y-4">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-3.5 sm:py-5 space-y-3 sm:space-y-4">
           {/* Quick Notice Banner */}
-          <div className="bg-blue-50/80 border border-blue-200/90 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          <div className="bg-blue-50/80 border border-blue-200/90 rounded-xl p-3 sm:p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
                 <FileSpreadsheet className="w-4 h-4" />
@@ -273,10 +355,21 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
+              {user && (
+                <button
+                  type="button"
+                  onClick={handleSaveToCloud}
+                  disabled={isSavingToCloud}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>{isSavingToCloud ? 'Saving...' : 'Sync to Cloud'}</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setIsBatchUploadOpen(true)}
-                className="px-3 py-1.5 bg-white text-blue-700 hover:bg-blue-100/60 font-semibold rounded-lg border border-blue-300 transition-colors shadow-2xs flex items-center gap-1.5"
+                className="px-3 py-1.5 bg-white text-blue-700 hover:bg-blue-100/60 font-semibold rounded-lg border border-blue-300 transition-colors shadow-2xs flex items-center gap-1.5 cursor-pointer"
               >
                 <UploadCloud className="w-3.5 h-3.5" />
                 Upload Multiple Images
@@ -284,7 +377,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setIsColumnManagerOpen(true)}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors shadow-2xs flex items-center gap-1.5"
+                className="px-3 py-1.5 bg-white text-slate-700 hover:bg-slate-50 font-semibold rounded-lg border border-slate-300 transition-colors shadow-2xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Sliders className="w-3.5 h-3.5" />
                 Customize Inputs
@@ -292,13 +385,20 @@ export default function App() {
             </div>
           </div>
 
-          {/* Sourcing Metrics and Container utilization */}
-          <SummaryStats products={products} currency={metadata.targetCurrency} />
+          {/* Project Summary KPI Bar */}
+          <SummaryStats
+            products={products}
+            currency={metadata.targetCurrency}
+            exchangeRateUsdToCny={metadata.exchangeRateUsdToCny}
+            enableExchangeRate={metadata.enableExchangeRate}
+          />
 
           {/* Spreadsheet Table */}
           <ProductTable
             products={products}
             columns={columns}
+            exchangeRateUsdToCny={metadata.exchangeRateUsdToCny}
+            enableExchangeRate={metadata.enableExchangeRate}
             onUpdateProduct={handleUpdateProduct}
             onUpdateProductValue={handleUpdateProductValue}
             onDeleteProduct={handleDeleteProduct}
@@ -310,6 +410,21 @@ export default function App() {
           />
         </main>
       )}
+
+      {/* Project Manager Modal */}
+      <ProjectManagerModal
+        isOpen={isProjectManagerOpen}
+        onClose={() => setIsProjectManagerOpen(false)}
+        currentProject={{
+          id: projectId,
+          metadata,
+          columns,
+          products,
+        }}
+        onSaveCurrentToCloud={handleSaveToCloud}
+        onLoadProject={handleLoadCloudProject}
+        isSaving={isSavingToCloud}
+      />
 
       {/* Column Manager Modal */}
       <ColumnManagerModal

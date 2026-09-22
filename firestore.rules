@@ -1,0 +1,79 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // User Profile Validation
+    function isValidUserProfile(data) {
+      return data.uid is string &&
+        data.uid == request.auth.uid &&
+        data.email is string &&
+        data.email.size() > 0 &&
+        data.email.size() <= 256;
+    }
+
+    // RFQ Project Validation
+    function isValidProject(data) {
+      return data.id is string &&
+        data.id.size() > 0 &&
+        data.id.size() <= 128 &&
+        data.ownerId is string &&
+        data.ownerId == request.auth.uid &&
+        data.projectName is string &&
+        data.projectName.size() > 0 &&
+        data.projectName.size() <= 200;
+    }
+
+    // User collection: Private user documents
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false; // Blanket user list queries prohibited to protect PII
+      allow create: if isOwner(userId) && isValidUserProfile(incoming());
+      allow update: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().uid == existing().uid;
+      allow delete: if isOwner(userId);
+    }
+
+    // Projects collection: User-owned RFQ projects
+    match /projects/{projectId} {
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() &&
+        isValidId(projectId) &&
+        isValidProject(incoming()) &&
+        incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() &&
+        isValidId(projectId) &&
+        isValidProject(incoming()) &&
+        existing().ownerId == request.auth.uid &&
+        incoming().ownerId == existing().ownerId;
+      allow delete: if isSignedIn() &&
+        isValidId(projectId) &&
+        existing().ownerId == request.auth.uid;
+    }
+  }
+}

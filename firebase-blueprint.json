@@ -1,0 +1,112 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile storing user display info and preferences",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID",
+          "maxLength": 128
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address",
+          "maxLength": 256
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name",
+          "maxLength": 128
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "User avatar photo URL",
+          "maxLength": 1024
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when profile was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when profile was updated"
+        }
+      },
+      "required": ["uid", "email"]
+    },
+    "RFQProject": {
+      "title": "RFQProject",
+      "description": "Saved factory sourcing RFQ project containing products, metadata, and column configurations",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique RFQ project identifier",
+          "maxLength": 128
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "UID of user who created and owns this project",
+          "maxLength": 128
+        },
+        "ownerEmail": {
+          "type": "string",
+          "description": "Email of user owner",
+          "maxLength": 256
+        },
+        "projectName": {
+          "type": "string",
+          "description": "Name of sourcing project or product inquiry batch",
+          "maxLength": 200
+        },
+        "rfqNumber": {
+          "type": "string",
+          "description": "RFQ inquiry reference code",
+          "maxLength": 64
+        },
+        "targetCurrency": {
+          "type": "string",
+          "description": "Primary currency such as RMB (¥) or USD",
+          "maxLength": 32
+        },
+        "exchangeRateUsdToCny": {
+          "type": "number",
+          "description": "FX exchange rate from USD to CNY"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Full RFQ metadata object"
+        },
+        "columns": {
+          "type": "array",
+          "description": "Configured column definitions"
+        },
+        "products": {
+          "type": "array",
+          "description": "List of products and uploaded photos with supplier quotation fields"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last modified timestamp"
+        }
+      },
+      "required": ["id", "ownerId", "projectName"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Private user account profile records"
+    },
+    "/projects/{projectId}": {
+      "schema": "RFQProject",
+      "description": "Sourcing RFQ projects created and managed by authenticated buyers"
+    }
+  }
+}
